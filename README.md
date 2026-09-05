@@ -1,12 +1,14 @@
-# 🧩 Autism Emotion Detection with VGG16 Transfer Learning
+# Autism Emotion Detection with VGG16 Transfer Learning
 
 > **A VGG16-based CNN trained on Dr. Fatma M. Talaat's Autistic Children Emotions dataset to classify six emotional expressions, supporting research into assistive technology for autism spectrum disorder (ASD).**
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
 [![TensorFlow](https://img.shields.io/badge/TensorFlow-Keras-FF6F00)](https://www.tensorflow.org/)
 [![VGG16](https://img.shields.io/badge/Backbone-VGG16%20ImageNet-8B5CF6)](https://keras.io/api/applications/vgg/)
-[![Kaggle](https://img.shields.io/badge/Kaggle-Notebook-20BEFF)](https://www.kaggle.com/)
-[![License](https://img.shields.io/badge/License-MIT-lightgrey)](LICENSE)
+[![Test Accuracy](https://img.shields.io/badge/Test%20Accuracy-70.7%25%20(n%3D75)-yellow)](#results)
+[![Kaggle](https://img.shields.io/badge/Kaggle-Notebook-20BEFF)](https://www.kaggle.com/code/collinslemeke/autism-emotion-detection)
+[![Published](https://img.shields.io/badge/Published-IEEE%20IC3ECSBHI%202026-success)](#published-work)
+[![License](https://img.shields.io/badge/Code-MIT-lightgrey)](LICENSE)
 
 ---
 
@@ -14,20 +16,15 @@
 
 - [Overview](#overview)
 - [Why This Matters](#why-this-matters)
+- [Published Work](#published-work)
 - [The Six Emotions](#the-six-emotions)
 - [Dataset](#dataset)
 - [Model Architecture](#model-architecture)
 - [Training Configuration](#training-configuration)
 - [Pipeline Walkthrough](#pipeline-walkthrough)
-  - [Step 1: Environment Setup](#step-1-environment-setup)
-  - [Step 2: Image Size and Data Augmentation](#step-2-image-size-and-data-augmentation)
-  - [Step 3: Data Loading](#step-3-data-loading)
-  - [Step 4: Model Architecture](#step-4-model-architecture)
-  - [Step 5: Training](#step-5-training)
-  - [Step 6: Evaluation](#step-6-evaluation)
-  - [Step 7: Predictions](#step-7-predictions)
 - [Key Design Decisions](#key-design-decisions)
 - [Results](#results)
+- [Read This Before Quoting the Accuracy](#read-this-before-quoting-the-accuracy)
 - [How to Reproduce](#how-to-reproduce)
 - [Ethical Considerations](#ethical-considerations)
 - [Repository Structure](#repository-structure)
@@ -47,6 +44,8 @@ The entire pipeline runs in a single Kaggle notebook, from data loading through 
 
 The technical core is deliberately simple. The ambition is not to invent a new architecture, it is to produce a reliable baseline on a specialised, under-studied dataset that could plausibly support downstream assistive technology research.
 
+**Headline result: 70.67% test accuracy on 75 held-out images.** That test set is small enough that the number carries a confidence interval roughly twenty points wide, and [a dedicated section below](#read-this-before-quoting-the-accuracy) explains why that matters more than the point estimate does.
+
 ---
 
 ## Why This Matters
@@ -62,11 +61,23 @@ This project is an early-stage research baseline. It is not a deployed product. 
 
 ---
 
+## Published Work
+
+The classifier in this repository is the visual emotion recognition component of the **Psycho-Intelligent Dialogue Agent (PIDA)** system, published at:
+
+> Iwendi, C., Aboutorabi, N., Adesola, A. E., **Lemeke, C.**, Okoro, G. C., & Sharma, V. (2026). Psycho-Intelligent Dialogue Agents for Enhancing Emotional Self-Regulation in Autistic Teenagers. *2026 2nd IEEE International Conference on Cognitive Computing in Engineering, Communications, Sciences and Biomedical Health Informatics (IC3ECSBHI)*, pp. 658–663. DOI: 10.1109/IC3ECSBHI67834.2026.11468965
+
+In that system, the classifier feeds a context-aware dialogue manager that adapts psychotherapeutic response strategies to the detected emotional state, with caregiver monitoring built in.
+
+**A correction to the published paper.** The abstract of that paper describes the classifier as performing a *five*-emotion recognition task. That is an error we did not catch before publication. The model has **six** output classes — visible in `model.summary()` as `Dense(6)`, in the `emotion_labels` list in the notebook, and in the paper's own quoted chance level of 16.7%, which is one in six. This repository is the authoritative version.
+
+---
+
 ## The Six Emotions
 
 The model predicts one of six emotion classes, derived from the dataset's native labels:
 
-| Label | Emotion |
+| Index | Emotion |
 |-------|---------|
 | 0 | **Surprise** |
 | 1 | **Delight** |
@@ -75,10 +86,12 @@ The model predicts one of six emotion classes, derived from the dataset's native
 | 4 | **Joy** |
 | 5 | **Anger** |
 
-Worth noting: this six-class scheme diverges from the standard **Ekman-seven** (Happy, Sad, Angry, Fear, Disgust, Surprise, Neutral) that drives most facial expression datasets including FER2013. Two meaningful differences:
+Chance performance on a six-class balanced task is **16.7%**.
+
+Worth noting: this six-class scheme diverges from the standard **Ekman-seven** (Happy, Sad, Angry, Fear, Disgust, Surprise, Neutral) that drives most facial expression datasets including FER2013. Three meaningful differences:
 
 - **No "Disgust" class.** Disgust is the most consistently hardest-to-detect emotion in FER datasets even with large sample sizes. Its omission here is a reasonable curatorial choice
-- **"Delight" and "Joy" as separate classes.** Most datasets collapse these into a single "Happy" class. Splitting them allows the model to distinguish between general positive affect (Joy) and intense momentary positive reactions (Delight). Whether this split is robust in practice is an empirical question the model's per-class performance will answer
+- **"Delight" and "Joy" as separate classes.** Most datasets collapse these into a single "Happy" class. Splitting them allows the model to distinguish between general positive affect (Joy) and intense momentary positive reactions (Delight). Whether this split is robust in practice is an empirical question — and one the error analysis in the published paper answers unfavourably, with Delight and Joy emerging as one of the two most-confused pairs
 - **No "Neutral" class.** Neutral faces are not represented, meaning the model will always predict one of the six active emotions. If deployed, this is a constraint that matters
 
 ---
@@ -111,11 +124,18 @@ Autistic Children Emotions - Dr. Fatma M. Talaat/
     └── surprise/
 ```
 
-This notebook uses a **three-way split**:
+### Actual split sizes
 
-- **Train** (80% of `Train/`) — fed to the model with augmentation
-- **Validation** (20% of `Train/`, via `validation_split=0.2`) — used to monitor training
-- **Test** (full `Test/` directory) — clean held-out evaluation
+These are the counts reported by `flow_from_directory` in the run committed to this repository:
+
+| Split | Source | Images | Approx. per class |
+|---|---|---|---|
+| Train | 80% of `Train/` | **608** | ~101 |
+| Validation | 20% of `Train/` | **150** | ~25 |
+| Test | full `Test/` | **75** | ~12 |
+| **Total** | | **833** | ~139 |
+
+**This is a very small dataset**, and everything downstream should be read in that light. 608 training images across six classes is roughly one hundred examples per emotion — enough for transfer learning to work, not enough for the result to be stable. See [Read This Before Quoting the Accuracy](#read-this-before-quoting-the-accuracy).
 
 Images are RGB photographs of autistic children, resized to **256×256** on load. The dataset preserves colour information (unlike grayscale datasets such as FER2013), which matters for transfer learning from ImageNet-pretrained weights that expect 3-channel input.
 
@@ -129,11 +149,11 @@ The network uses **VGG16 transfer learning** with a frozen backbone and a traina
 Input (256, 256, 3)
 │
 ├── VGG16 (frozen, ImageNet weights, include_top=False)
-│   ├── Block 1: Conv+Conv+MaxPool   → (128, 128, 64)
-│   ├── Block 2: Conv+Conv+MaxPool   → (64, 64, 128)
-│   ├── Block 3: Conv+Conv+Conv+MaxPool  → (32, 32, 256)
-│   ├── Block 4: Conv+Conv+Conv+MaxPool  → (16, 16, 512)
-│   └── Block 5: Conv+Conv+Conv+MaxPool  → (8, 8, 512)
+│   ├── Block 1: Conv+Conv+MaxPool           → (128, 128, 64)
+│   ├── Block 2: Conv+Conv+MaxPool           → (64, 64, 128)
+│   ├── Block 3: Conv+Conv+Conv+MaxPool      → (32, 32, 256)
+│   ├── Block 4: Conv+Conv+Conv+MaxPool      → (16, 16, 512)
+│   └── Block 5: Conv+Conv+Conv+MaxPool      → (8, 8, 512)
 │
 └── Custom Classifier Head (trainable) ─────────
     Flatten                       → (32,768,)
@@ -144,28 +164,42 @@ Input (256, 256, 3)
     Dense(6, Softmax)             → Output (6 classes)
 ```
 
+### Parameter budget
+
+| Layer | Output shape | Parameters |
+|---|---|---|
+| `vgg16` (Functional, frozen) | (None, 8, 8, 512) | 14,714,688 |
+| `flatten` | (None, 32,768) | 0 |
+| `dense` | (None, 512) | 16,777,728 |
+| `dropout` | (None, 512) | 0 |
+| `dense_1` | (None, 256) | 131,328 |
+| `dropout_1` | (None, 256) | 0 |
+| `dense_2` | (None, 6) | 1,542 |
+
+| | Count | Size |
+|---|---|---|
+| **Total** | 65,446,484 | 249.66 MB |
+| **Trainable** | 16,910,598 | 64.51 MB |
+| **Non-trainable (frozen VGG16)** | 14,714,688 | 56.13 MB |
+| Optimizer state | 33,821,198 | 129.02 MB |
+
+Note the shape of this: **the first Dense layer alone holds 16.78M of the 16.91M trainable parameters — 99.2% of everything being learned.** That is a direct consequence of flattening an 8×8×512 feature map into a 32,768-dimensional vector before the first projection. It is also why the heaviest dropout (0.5) sits immediately after it. Replacing the Flatten with `GlobalAveragePooling2D` would cut trainable parameters to roughly 133K, a 127× reduction, and is the first item on the roadmap.
+
 **Why transfer learning?**
 
-A full VGG16 has ~138M parameters. Training from scratch on a small, specialised dataset like this one would almost certainly overfit, and the network would fail to learn useful low-level visual features (edges, textures, face parts) from the limited images available.
+Training from scratch on 608 images would almost certainly overfit, and the network would fail to learn useful low-level visual features (edges, textures, face parts) from the limited data available.
 
 Instead, the ImageNet-pretrained convolutional backbone brings **pre-learned visual representations** — the same edge detectors, texture filters, and part detectors that let VGG16 recognise a thousand object categories. These features are transferable to facial expression classification almost for free. Only the classifier head is retrained from scratch to map those features to the six emotion classes.
 
 **Why freeze the backbone?**
 
-With a small dataset, fine-tuning the full 138M-parameter backbone risks catastrophic forgetting and severe overfitting. Freezing it means:
+With a dataset this size, fine-tuning the full backbone risks catastrophic forgetting and severe overfitting. Freezing it means:
 
-- Training is fast (only ~17M trainable parameters in the head)
+- Training is fast (roughly 16 seconds per epoch on a T4 after the first)
 - The pretrained visual features are preserved
 - The model can't overfit at the feature-extraction layer, only at the classifier
 
-A natural next iteration (see [Roadmap](#roadmap)) would be a two-stage training schedule: train the head first with the backbone frozen, then unfreeze the top few VGG blocks and fine-tune with a very low learning rate.
-
-**Classifier head design:**
-
-- **Flatten layer** converts the (8×8×512) feature maps to a 32,768-dim vector
-- **Dense(512) → Dropout(0.5)** provides high capacity with heavy regularisation at the first projection
-- **Dense(256) → Dropout(0.3)** refines the representation with lighter dropout
-- **Dense(6, Softmax)** outputs a probability distribution over the six classes
+A natural next iteration (see [Roadmap](#roadmap)) would be a two-stage schedule: train the head first with the backbone frozen, then unfreeze the top VGG blocks and fine-tune at a very low learning rate.
 
 ---
 
@@ -174,11 +208,12 @@ A natural next iteration (see [Roadmap](#roadmap)) would be a two-stage training
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
 | **Input shape** | 256 × 256 × 3 (RGB) | Matches VGG16's expected input channels, preserves detail |
-| **Batch size** | 64 | Standard for mid-size CNNs on T4 GPU |
-| **Epochs** | 28 | Tuned empirically for convergence without overfitting |
-| **Optimiser** | Adam (lr=0.0001) | Lower than default (1e-3) because only the head is training — a smaller step works better when the backbone is frozen |
+| **Batch size** | 64 (10 steps per epoch) | Standard for mid-size CNNs on T4 GPU |
+| **Epochs** | 28 (no early stopping) | Fixed budget, tuned empirically |
+| **Optimiser** | Adam (lr = 1×10⁻⁴) | Ten times below the default, because only the head is training |
 | **Loss** | categorical_crossentropy | Standard for multi-class one-hot targets |
-| **Validation split** | 0.2 (20% of `Train/`) | Standard holdout for callbacks and monitoring |
+| **Validation split** | 0.2 (20% of `Train/`) | Holdout for monitoring |
+| **Hardware** | Kaggle, 2× NVIDIA Tesla T4 | Free tier |
 
 ### Data Augmentation
 
@@ -198,124 +233,113 @@ Applied to the training set only. Validation and test streams are clean (rescale
 
 The augmentation is deliberately **gentle** (note the 0.09 values for shifts, shear, and zoom). Too-aggressive augmentation on a small specialised dataset can destroy the very facial structure the model needs to read. The values chosen simulate natural variation without distorting emotional features.
 
+The brightness range and rotation together are the elements that matter for real-world robustness: they approximate the head tilt and lighting variation you get from a camera in a room rather than a studio.
+
 ---
 
 ## Pipeline Walkthrough
 
-The notebook runs seven clearly numbered steps. Below is a detailed walkthrough of each.
+The notebook runs seven clearly numbered steps.
 
----
+**Step 1 — Environment setup.** Imports TensorFlow, Keras layers, the VGG16 application, Adam, NumPy, Matplotlib and `ImageDataGenerator`. Defines the two dataset paths.
 
-### Step 1: Environment Setup
+**Step 2 — Image size and augmentation.** Sets `img_size = (256, 256)` and `batch_size = 64`, then constructs the training generator with all augmentation parameters plus `validation_split=0.2`. This cell is the single biggest lever for generalisation on a dataset this small.
 
-**What it does:** Imports TensorFlow, Keras layers (Conv2D, MaxPooling2D, Flatten, Dense, Dropout), the VGG16 application, Adam optimiser, NumPy, Matplotlib, and the ImageDataGenerator. Defines the two dataset paths (`train_data_dir` and `test_data_dir`).
+**Step 3 — Data loading.** Creates three `flow_from_directory` generators: train (`subset='training'`, augmented), validation (`subset='validation'`), and test (separate rescale-only generator over `Test/`). All use `class_mode='categorical'`.
 
----
+**Step 4 — Model architecture.** Loads VGG16 with ImageNet weights and `include_top=False`, freezes every convolutional layer, and stacks the custom head. The output layer uses `len(train_generator.class_indices)` so the code is dataset-agnostic.
 
-### Step 2: Image Size and Data Augmentation
+**Step 5 — Training.** Compiles with Adam at 1e-4 and runs 28 epochs. Produces accuracy and loss curves, and prints `model.summary()`.
 
-**What it does:** Sets `img_size = (256, 256)` and `batch_size = 64`, then constructs the training `ImageDataGenerator` with all augmentation parameters plus `validation_split=0.2`.
+**Step 6 — Evaluation.** Calls `model.evaluate(test_generator)` on the 75 held-out images and plots the result as a single bar.
 
-This cell is where every augmentation choice from the table above is applied. It is the single biggest lever for the model's generalisation performance on a small dataset.
-
----
-
-### Step 3: Data Loading
-
-**What it does:** Creates three `flow_from_directory` generators:
-
-- **Train generator** — `Train/` with `subset='training'`, augmentation active
-- **Validation generator** — `Train/` with `subset='validation'`, same augmentation generator (but the split is clean)
-- **Test generator** — `Test/` with a separate rescale-only `ImageDataGenerator` (no augmentation, preserving ground-truth images for evaluation)
-
-All three generators use `class_mode='categorical'`, which one-hot encodes the six emotion labels for cross-entropy training.
-
----
-
-### Step 4: Model Architecture
-
-**What it does:** Loads VGG16 with ImageNet weights and `include_top=False` (discarding the original 1,000-class classifier), freezes every convolutional layer (`layer.trainable = False`), and builds a Sequential model that stacks the frozen VGG16 backbone with the custom classifier head described in the [Architecture section](#model-architecture).
-
-The final output layer uses `len(train_generator.class_indices)` to auto-derive the number of classes from the data directory, which makes the code dataset-agnostic — if the dataset ever changes to 7 or 5 classes, this line still works.
-
----
-
-### Step 5: Training
-
-**What it does:** Compiles the model with `Adam(learning_rate=0.0001)`, categorical crossentropy loss, and accuracy metric. Runs `model.fit()` for 28 epochs on the train generator with the validation generator as the eval stream.
-
-After training, two plots are produced:
-
-1. **Accuracy curves** — training and validation accuracy over epochs
-2. **Loss curves** — training and validation loss over epochs
-
-A `model.summary()` is also printed, showing the frozen VGG16 parameter count (non-trainable), the trainable head parameter count, and the total.
-
----
-
-### Step 6: Evaluation
-
-**What it does:** Calls `model.evaluate(test_generator)` on the held-out test set, prints the test accuracy and test loss, and visualises the test accuracy as a single bar chart.
-
-This is the headline number that represents the model's generalisation performance on genuinely unseen data.
-
----
-
-### Step 7: Predictions
-
-**What it does:** Performs two kinds of qualitative inference.
-
-**Single-image prediction:** Loads a specific test image (`Test/fear/13.jpg`), preprocesses it (resize to 256×256, normalise to [0, 1], add batch dimension), runs `model.predict()`, and prints the top predicted emotion using the hard-coded emotion label list: `['Surprise', 'Delight', 'Sadness', 'Fear', 'Joy', 'Anger']`.
-
-**Random-grid prediction:** Samples 20 random images from the test set, predicts each one, and displays a 4×5 grid showing each image with its predicted label and confidence score. This visual qualitative check complements the aggregate test accuracy by showing exactly where the model succeeds and where it fails.
+**Step 7 — Predictions.** Two qualitative checks. A single-image prediction on `Test/fear/13.jpg` (correctly predicted as Fear in the committed run), and a 4×5 grid of 20 random test images with predicted labels and confidence scores.
 
 ---
 
 ## Key Design Decisions
 
-A handful of deliberate choices shape this baseline.
-
 | Decision | Choice | Why |
 |----------|--------|-----|
-| **Backbone** | VGG16 with ImageNet weights | Transfers low-level visual features for free. Training from scratch on a small specialised dataset would severely overfit |
-| **Freezing strategy** | Freeze the entire backbone, train only the head | Safest option for a small dataset. Fine-tuning the backbone needs careful learning rate schedules that are out of scope for a first baseline |
-| **Input size** | 256 × 256 RGB | Matches VGG16's natural input scale and keeps full colour information. Using grayscale (like FER2013) would waste the pretrained colour-sensitive filters |
-| **Learning rate** | 0.0001 | Ten times smaller than the Adam default. Appropriate when only the classifier head is trainable — large steps on a small parameter set cause oscillation |
-| **Augmentation intensity** | Gentle (0.09 for shifts, shear, zoom) | Aggressive augmentation on a small specialised dataset risks distorting emotional features. Gentle augmentation still provides regularisation without destroying signal |
-| **Dropout schedule** | 0.5 after Dense(512), 0.3 after Dense(256) | Heavier regularisation at the first projection where overfitting risk is highest. Lighter at the second projection where the feature dimensionality is already reduced |
-| **Number of classes** | 6 (native dataset labels) | Preserved as-is from the dataset curator's schema rather than mapping to Ekman-7. The curator's choice reflects domain expertise |
-| **Output layer sizing** | Derived from `train_generator.class_indices` | Dataset-agnostic — works if the dataset later adds or removes classes |
+| **Backbone** | VGG16 with ImageNet weights | Transfers low-level visual features for free. Training from scratch on 608 images would severely overfit |
+| **Freezing strategy** | Freeze the entire backbone, train only the head | Safest option for a small dataset. Fine-tuning needs careful schedules that are out of scope for a first baseline |
+| **Input size** | 256 × 256 RGB | Matches VGG16's natural input scale and keeps full colour. Grayscale would waste the pretrained colour-sensitive filters |
+| **Learning rate** | 1×10⁻⁴ | Ten times below the Adam default. Appropriate when only the head is trainable — large steps on a small parameter set cause oscillation |
+| **Augmentation intensity** | Gentle (0.09 for shifts, shear, zoom) | Aggressive augmentation on a small specialised dataset risks distorting emotional features |
+| **Dropout schedule** | 0.5 after Dense(512), 0.3 after Dense(256) | Heavier regularisation where 99% of the trainable parameters sit |
+| **Number of classes** | 6 (native dataset labels) | Preserved from the curator's schema rather than mapped to Ekman-7. The curator's choice reflects domain expertise |
+| **Output layer sizing** | Derived from `class_indices` | Works if the dataset later adds or removes classes |
 
 ---
 
 ## Results
 
-> *Fill this section with your actual numbers after running the notebook. Placeholders below show the expected format.*
+All figures below are read from the stored outputs of the notebook committed to this repository.
 
 ### Test Set Performance
 
 | Metric | Value |
 |--------|-------|
-| **Overall Test Accuracy** | *(run notebook)* |
-| **Test Loss** | *(run notebook)* |
+| **Test accuracy** | **70.67%** (0.7067) |
+| **Test loss** | 1.0723 |
+| Test set size | 75 images |
+| Approximate 95% confidence interval | **[60.4%, 81.0%]** |
+| Chance level (6 classes) | 16.7% |
 
-### Per-Class Observations
+The model performs well above chance — roughly seven correct predictions in ten unseen images of autistic children, which is a reasonable result given the challenge of emotion recognition in this population and the size of the specialised dataset. The confidence interval is the honest companion to that number and is discussed [below](#read-this-before-quoting-the-accuracy).
 
-After running, inspect:
+### Training Trajectory
 
-- Which emotions are most reliably predicted (typically Joy and Anger in facial expression tasks)
-- Which emotions are most commonly confused (Fear ↔ Surprise is a known difficult pair)
-- Whether the Delight vs Joy distinction — unique to this dataset — holds up, or whether the model collapses them
+| Epoch | Train Acc | Train Loss | Val Acc | Val Loss |
+|---|---|---|---|---|
+| 1 | 0.3005 | 1.9503 | 0.4800 | 1.4046 |
+| 5 | 0.4718 | 1.3691 | 0.5000 | 1.3029 |
+| 10 | 0.5874 | 1.1636 | 0.5533 | 1.2552 |
+| 15 | 0.6079 | 1.1100 | 0.5867 | 1.2923 |
+| 20 | 0.5826 | 1.1152 | 0.5533 | 1.1668 |
+| 24 | 0.6157 | 1.0519 | 0.5600 | **1.1396** (min) |
+| 28 | **0.6644** | **0.9391** | 0.5800 | 1.1562 |
+
+Training accuracy roughly doubled over the run, from 30.1% to 66.4%. Validation accuracy improved from 48.0% to 58.0%, with most of the gain arriving in the first fifteen epochs before flattening.
+
+**Final state:** training 66.44%, validation 58.00%, test 70.67%.
+
+The widening gap between training and validation in later epochs is mild overfitting — the model continued fitting the training data while generalisation plateaued. Validation loss reached its minimum at epoch 24 (1.1396) and rose slightly after, which is where early stopping would have halted the run. There is no early stopping in this version; the epoch budget is fixed at 28. Adding it is on the roadmap.
+
+### Per-Class Performance
+
+**The notebook does not currently compute a confusion matrix or per-class F1 scores.** This is the most significant gap in the evaluation and the top roadmap item.
+
+What is known about per-class behaviour comes from the error analysis in the published paper: the residual errors concentrate in two pairs — **Surprise confused with Fear**, and **Delight confused with Joy**. Both pairs are ones humans find genuinely difficult, and the second is a direct challenge to the dataset's decision to split positive affect into two classes.
+
+That finding is qualitative. Until per-class precision, recall and F1 are computed, the aggregate accuracy conceals whether any individual emotion is failing badly — exactly the problem quantified in the [companion FER2013 project](https://github.com/CollinsLemeke/Facial-Expression-Recognition-Model), where a headline figure hid a class the model recognised barely a third of the time.
 
 ### Context: Comparable Benchmarks
 
-For reference, published results on autistic-children emotion datasets typically range from:
+| Approach | Typical range |
+|---|---|
+| Chance (6 classes) | 16.7% |
+| Simple CNN from scratch | 50–65% |
+| **This work — frozen VGG16 transfer learning** | **70.7%** |
+| Fine-tuned transfer learning, two-stage | 75–85% on better-curated datasets |
 
-- **Simple CNN from scratch:** 50–65% (limited by dataset size)
-- **Transfer learning (VGG / ResNet / EfficientNet):** 65–80% depending on dataset size and augmentation
-- **Fine-tuned transfer learning with two-stage training:** 75–85% on the better-curated datasets
+Direct comparison to FER2013 numbers is not meaningful: FER2013 has 35,887 images and uses the Ekman-seven scheme, while this dataset has 833 images and a different six-class schema.
 
-Direct comparison to FER2013 numbers is not meaningful because FER2013 has 35K+ images and uses the Ekman-seven scheme, while this dataset is smaller and uses a different six-class schema.
+---
+
+## Read This Before Quoting the Accuracy
+
+The test set is **75 images**. That is roughly twelve images per class, and it changes how the headline number should be read.
+
+**One image is worth 1.33 accuracy points.** Getting two more images right moves the result from 70.67% to 73.33%. Getting two more wrong moves it to 68.00%. Nothing about the model changed in either case.
+
+**The 95% confidence interval spans about twenty points.** Using the normal approximation, `0.7067 ± 1.96 × √(0.7067 × 0.2933 / 75)` gives roughly **[60.4%, 81.0%]**. Any comparison against another model whose result falls inside that band is not a meaningful comparison.
+
+**This explains the test-above-validation result.** Test accuracy (70.67%) exceeded both validation (58.00%) and training (66.44%) accuracy, which looks anomalous. It is not evidence of unusually good generalisation. With 75 test images against 150 validation images, the test estimate is simply noisier, and this draw came out favourably. The published paper offers "test set representativeness" and "statistical variation" as explanations; the confidence interval is the precise version of that same point.
+
+**What would fix it.** Stratified k-fold cross-validation over the combined 833 images, reporting a mean and standard deviation across folds rather than a single point estimate, plus per-class F1 so that minority-class failure becomes visible. That is the difference between "the model scored 70.67%" and "the model scores 70.67% ± *x*, and here is where it fails."
+
+None of this makes the result worthless. It makes it *provisional*, which is the correct status for a baseline on a dataset this size. Quoting the point estimate without the interval would be the mistake.
 
 ---
 
@@ -330,21 +354,24 @@ Direct comparison to FER2013 numbers is not meaningful because FER2013 has 35K+ 
 5. Enable **GPU T4 x1** in notebook settings (free tier)
 6. Run all cells top to bottom
 
-Expected runtime on T4 GPU: approximately 20–40 minutes.
+Expected runtime on a T4: **roughly 10 minutes.** The first epoch takes about 73 seconds including XLA compilation and cuDNN warm-up; subsequent epochs run at around 16 seconds each.
+
+**Note on reproducibility:** this notebook does not set a global random seed. Weight initialisation, shuffle order and augmentation draws will differ between runs, so your numbers will not match exactly. Given the confidence interval above, expect variation of several points. Adding `tf.keras.utils.set_random_seed(42)` before model construction is on the roadmap and would make runs comparable.
 
 ### Option 2: Run Locally
 
 ```bash
 # Clone the repo
-git clone https://github.com/[your-username]/autism-emotion-detection.git
-cd autism-emotion-detection
+git clone https://github.com/CollinsLemeke/Autism-Facial-Emotion-Classification.git
+cd Autism-Facial-Emotion-Classification
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Download the dataset from Kaggle
-kaggle datasets download -d <owner>/autistic-children-emotions-dr-fatma-m-talaat
-unzip autistic-children-emotions.zip -d data/
+# (You'll need a Kaggle API token — see https://www.kaggle.com/docs/api)
+kaggle datasets download -d fatmam/autistic-children-emotions-dr-fatma-m-talaat
+unzip autistic-children-emotions-dr-fatma-m-talaat.zip -d data/
 
 # Update paths in the notebook from /kaggle/input/... to data/...
 jupyter notebook autism-emotion-detection.ipynb
@@ -352,9 +379,9 @@ jupyter notebook autism-emotion-detection.ipynb
 
 ### Hardware Recommendations
 
-- **Minimum:** CPU-only training is impractical (4–8 hours). Not recommended
-- **Recommended:** Single modern GPU (T4, RTX 3060+, A10G). 20–40 minute training
-- **Best:** A100 or L4. 10–15 minute training
+- **Minimum:** CPU-only is impractical. Not recommended
+- **Recommended:** Single modern GPU (T4, RTX 3060+, A10G). Around 10 minutes
+- **Best:** A100 or L4. Under 5 minutes
 
 ---
 
@@ -370,28 +397,30 @@ This section is the most important part of this README. Emotion recognition on a
 
 ### Dataset Limitations
 
-- **Small sample size.** Specialised datasets like this one are necessarily small. Generalisation beyond the exact data distribution is uncertain
-- **Demographic representation.** The dataset was curated in a specific context. Performance on children outside that demographic (different regions, age groups, or severity levels on the spectrum) is unknown
-- **Label validity.** "Emotion" labels on facial expressions are always inferential. A photograph labelled "fear" captures a facial expression that a human annotator interpreted as fearful. The actual emotional state of the child at the moment of capture is unknowable
+- **Very small sample size.** 833 images total, 75 of them in the test set. Generalisation beyond the exact data distribution is genuinely uncertain, and the confidence interval on the headline result reflects that
+- **Demographic representation.** The dataset was curated in a specific context. Performance on children outside that demographic (different regions, age groups, or positions on the spectrum) is unknown, and the dataset carries no demographic annotation with which to check
+- **Label validity.** "Emotion" labels on facial expressions are always inferential. An image labelled "fear" captures a facial expression that a human annotator interpreted as fearful. The actual emotional state of the child at the moment of capture is unknowable
+- **No neutral class.** The model always predicts one of six active emotions. A calm, unexpressive face will be forced into a category
 - **Consent and privacy.** Images of children on the autism spectrum are sensitive. Any derivative work should honour the original consent framework under which the dataset was collected
 
 ### Considerations for Downstream Use
 
-If anyone were to extend this work toward actual assistive technology, these would be non-negotiable requirements:
+If anyone were to extend this work toward actual assistive technology, these would be non-negotiable:
 
 - **Clinical collaboration.** Work directly with ASD clinicians, educators, and autistic self-advocates from day one, not retrofitted later
 - **Autistic community involvement.** Nothing about us without us — the autistic community must be substantively involved in the design of any tool that uses this technology
 - **Uncertainty communication.** The model is a probabilistic classifier. Its confidence scores must be surfaced to any downstream user, not hidden behind a confident-sounding label
 - **Opt-in consent.** No passive deployment in classrooms, therapy sessions, or surveillance settings without active, informed consent from children (age-appropriately), parents, and care teams
-- **Failure-mode design.** The system must fail safely — a wrong emotion prediction in an educational game has low stakes, the same wrong prediction in a clinical decision has potentially high stakes
+- **Failure-mode design.** The system must fail safely — a wrong emotion prediction in an educational game has low stakes, the same prediction informing a clinical decision does not
 
 ### Broader Emotion Recognition Caveats
 
 The same caveats that apply to general facial expression recognition apply here with added force due to the clinical population:
 
-- **Emotion inference is not ground truth.** Models predict visual patterns, not internal states
+- **Emotion inference is not ground truth.** Models predict visual patterns an annotator labelled, not internal states
 - **Cultural expression norms vary.** A model trained on one population's expression conventions may misread another's
 - **Autistic expressions may differ from neurotypical norms.** This is partly why dedicated datasets like this one exist — but the training labels themselves are interpretations, possibly by neurotypical annotators, of autistic children's expressions. That interpretive layer should not be forgotten
+- **Regulatory context.** Emotion inference systems are treated as high-risk or prohibited in several jurisdictions depending on setting. Article 5(1)(f) of Regulation (EU) 2024/1689 prohibits emotion inference in workplaces and education institutions except for medical or safety purposes. An assistive or therapeutic application may fall within the medical carve-out, but that is a determination requiring legal advice, not an assumption
 
 Treat this project as **early-stage research**, publishable as a methods contribution, but never as a deployed system without the infrastructure above.
 
@@ -407,6 +436,7 @@ Treat this project as **early-stage research**, publishable as a methods contrib
 ├── outputs/                               # (generated)
 │   ├── accuracy_curves.png
 │   ├── loss_curves.png
+│   ├── test_accuracy.png
 │   └── test_predictions_grid.png
 └── LICENSE
 ```
@@ -434,18 +464,19 @@ On Kaggle, everything is pre-installed. No setup required.
 
 ## Roadmap
 
-Improvements that could move this from research baseline to something more substantive:
+In the order the results above actually justify:
 
-- **Two-stage fine-tuning** — train the classifier head first with VGG16 frozen, then unfreeze the top VGG blocks and fine-tune with a very low learning rate (e.g., 1e-5)
-- **Confusion matrix and per-class F1 reporting** — currently the notebook reports only test accuracy; adding full classification metrics would match the depth of the FER2013 companion project
-- **Modern backbones** — swap VGG16 for ResNet50, EfficientNet-B0, or a vision transformer (ViT) for better feature quality at the same parameter budget
-- **Face detection preprocessing** — MTCNN or MediaPipe to crop tightly around the face before feature extraction
-- **Test-time augmentation (TTA)** — averaging predictions across augmented views for a small accuracy boost
-- **Grad-CAM visualisation** — show which facial regions the model attends to for each prediction, essential for interpretability in a clinical context
-- **Cross-dataset evaluation** — test the model on a neurotypical emotion dataset (FER2013, AffectNet) to quantify how much the specialised training matters
-- **Class weighting** — if any emotion has materially fewer samples, apply inverse-frequency weighting to the loss
-- **Ensemble with the FER2013 model** — combine predictions from this dataset-specific model with a general-purpose FER model for robustness
-- **Clinical validation study** — collaboration with ASD clinicians to evaluate whether model predictions align with expert judgment
+1. **Confusion matrix and per-class precision, recall and F1.** The single most valuable addition. Aggregate accuracy on a six-class problem with ~12 test images per class cannot show which emotion is failing. The published error analysis suggests Surprise/Fear and Delight/Joy; this would confirm it quantitatively
+2. **Cross-validation.** Stratified k-fold over the combined 833 images, reporting mean and standard deviation, replacing a single noisy point estimate
+3. **Set a global seed.** `tf.keras.utils.set_random_seed(42)` before model construction, so runs are comparable
+4. **Add early stopping.** Validation loss bottomed at epoch 24 and rose after. `EarlyStopping(patience=5, restore_best_weights=True)` would capture the better checkpoint automatically
+5. **Replace Flatten with GlobalAveragePooling2D.** Cuts trainable parameters from 16.9M to roughly 133K, which on a 608-image training set is likely to help rather than hurt
+6. **Two-stage fine-tuning** — train the head frozen, then unfreeze the top VGG blocks at 1e-5
+7. **Modern backbones** — ResNet50, EfficientNet-B0, or a vision transformer at a similar parameter budget
+8. **Face detection preprocessing** — MTCNN or MediaPipe to crop tightly before feature extraction
+9. **Grad-CAM visualisation** — show which facial regions drive each prediction, essential for interpretability in a clinical context
+10. **Cross-dataset evaluation** — test on FER2013 or AffectNet to quantify how much the specialised training actually matters
+11. **Clinical validation study** — collaboration with ASD clinicians to evaluate whether predictions align with expert judgment
 
 ---
 
@@ -457,9 +488,17 @@ This project uses the **Autistic Children Emotions dataset curated by Dr. Fatma 
 
 ## Author
 
-**Collins Lemeke**
+**Collins Lemeke** — model design, implementation, training and evaluation.
 
-This project sits at the intersection of computer vision and accessibility research. It connects to my wider work on efficient, domain-specific deep learning models that address gaps in mainstream ML training data.
+AI Research Engineer, Centre of Intelligence of Things, University of Greater Manchester. This work was carried out with colleagues at CIoTh under the supervision of Prof. Celestine Iwendi, and forms part of a wider research programme on reading internal state from observable signals — across facial expression, physiological sensing, gait and language.
+
+- [GitHub](https://github.com/CollinsLemeke)
+- [Kaggle](https://www.kaggle.com/collinslemeke/code)
+
+Related work in this programme:
+- [Facial Expression Recognition with CNN](https://github.com/CollinsLemeke/Facial-Expression-Recognition-Model) — imbalance-aware evaluation on FER2013
+- [Detecting Cognitive Decline, Falls and Frailty](https://github.com/CollinsLemeke/Detecting-Cognitive-Decline-Falls-and-Frailty) — interpretable screening from gait sensor data
+- [DistilBERT vs Frontier LLMs](https://github.com/CollinsLemeke/DistilBERT-vs-Frontier-LLMs) — accuracy and carbon trade-offs on mental health text
 
 For questions, feedback, or feature requests, open a GitHub issue.
 
@@ -467,9 +506,9 @@ For questions, feedback, or feature requests, open a GitHub issue.
 
 ## License
 
-MIT License. Free to use, modify, and distribute. See [LICENSE](LICENSE) for full terms.
+**Code: MIT.** Free to use, modify, and distribute. See [LICENSE](LICENSE) for full terms.
 
-The Autistic Children Emotions dataset has its own licence and terms of use, separate from this code. Please refer to the [original Kaggle dataset page](https://www.kaggle.com/) for dataset licensing details.
+**Data:** The Autistic Children Emotions dataset has its own licence and terms of use, separate from this code, and is not redistributed here. Refer to the original Kaggle dataset page for licensing details.
 
 ---
 
